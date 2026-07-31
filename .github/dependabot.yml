@@ -10,6 +10,13 @@ updates:
       development-dependencies:
         dependency-type: development
     open-pull-requests-limit: 10
+    # Major TS / Node typings jumps break tsc without a planned migration
+    # (see closed Dependabot PR #6: TypeScript 5→7, @types/node 22→26).
+    ignore:
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: github-actions
     directory: "/"
