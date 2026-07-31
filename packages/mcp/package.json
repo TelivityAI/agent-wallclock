@@ -1,0 +1,25 @@
+{
+  "name": "@agent-wallclock/mcp",
+  "version": "0.1.0",
+  "description": "Local stdio MCP server for Agent Wallclock",
+  "license": "Apache-2.0",
+  "type": "module",
+  "bin": {
+    "agent-wallclock-mcp": "./dist/server.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@agent-wallclock/core": "0.1.0",
+    "@modelcontextprotocol/sdk": "^1.12.1",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.10",
+    "typescript": "^5.8.2"
+  }
+}

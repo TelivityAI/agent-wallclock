@@ -1,0 +1,19 @@
+{
+  "name": "agent-wallclock",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Local-only wall-clock, session, and effort context for any language model host",
+  "license": "Apache-2.0",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "npm run build -w @agent-wallclock/core && npm run build -w @agent-wallclock/cli && npm run build -w @agent-wallclock/mcp",
+    "test": "npm run test -w @agent-wallclock/core",
+    "smoke": "npm run build && node scripts/smoke.mjs && node scripts/mcp-smoke.mjs",
+    "wallclock": "node packages/cli/dist/bin.js"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

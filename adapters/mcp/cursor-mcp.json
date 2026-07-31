@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "agent-wallclock": {
+      "command": "node",
+      "args": [
+        "/ABSOLUTE/PATH/TO/agent-wallclock/packages/mcp/dist/server.js"
+      ]
+    }
+  }
+}

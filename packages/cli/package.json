@@ -1,0 +1,23 @@
+{
+  "name": "@agent-wallclock/cli",
+  "version": "0.1.0",
+  "description": "Agent Wallclock CLI",
+  "license": "Apache-2.0",
+  "type": "module",
+  "bin": {
+    "wallclock": "./dist/bin.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@agent-wallclock/core": "0.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.10",
+    "typescript": "^5.8.2"
+  }
+}
