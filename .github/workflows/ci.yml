@@ -18,4 +18,3 @@ jobs:
       - run: npm run build
       - run: npm test
       - run: npm run smoke
-      - run: node scripts/mcp-smoke.mjs

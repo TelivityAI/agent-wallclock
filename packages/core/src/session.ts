@@ -101,6 +101,7 @@ export function endSession(
 export function timeline(
   store: StoreData,
   limit = 20,
+  now: Date = new Date(),
 ): Array<{
   kind: "session";
   id: string;
@@ -116,12 +117,16 @@ export function timeline(
     .sort((a, b) => Date.parse(b.startedAt) - Date.parse(a.startedAt))
     .slice(0, limit)
     .map((s) => {
-      const end = s.endedAt ? Date.parse(s.endedAt) : null;
       const start = Date.parse(s.startedAt);
-      const durationMs =
-        end != null && Number.isFinite(end) && Number.isFinite(start)
-          ? Math.max(0, end - start)
-          : null;
+      let durationMs: number | null = null;
+      if (s.endedAt) {
+        const end = Date.parse(s.endedAt);
+        if (Number.isFinite(end) && Number.isFinite(start)) {
+          durationMs = Math.max(0, end - start);
+        }
+      } else if (Number.isFinite(start)) {
+        durationMs = Math.max(0, now.getTime() - start);
+      }
       return {
         kind: "session" as const,
         id: s.id,

@@ -8,7 +8,7 @@ import {
   getDefaultStoreDir,
   getNow,
   loadStore,
-  saveStore,
+  updateStore,
   startEffort,
   listEfforts,
   startSession,
@@ -16,14 +16,25 @@ import {
   renderBriefing,
   formatDuration,
   logManualDuration,
+  parseDuration,
+  effortStatus,
 } from "@agent-wallclock/core";
 
 const STORE_DIR = process.env.AGENT_WALLCLOCK_HOME?.trim() || getDefaultStoreDir();
+const WRITES_ENABLED = process.env.AGENT_WALLCLOCK_WRITES === "1";
 
 function textResult(text: string) {
   return {
     content: [{ type: "text" as const, text }],
   };
+}
+
+function requireWrites(): void {
+  if (!WRITES_ENABLED) {
+    throw new Error(
+      "MCP write tools are disabled. Set AGENT_WALLCLOCK_WRITES=1 to enable start_effort and log_session.",
+    );
+  }
 }
 
 const server = new McpServer({
@@ -51,7 +62,7 @@ server.tool(
 
 server.tool(
   "get_briefing",
-  "Return a Temporal Briefing with now, active session age, and active effort logged time. Use this instead of inventing durations.",
+  "Return a Temporal Briefing with generated-at freshness, now, active session age, and active effort logged time. Refresh if stale. Use this instead of inventing durations.",
   {},
   async () => {
     const store = loadStore(STORE_DIR);
@@ -71,7 +82,8 @@ server.tool(
     }
     const lines = efforts.map((e) => {
       const active = store.activeEffortId === e.id ? "active" : "inactive";
-      return `${e.name} | ${active} | logged=${formatDuration(e.totalMs)} | sessions=${e.sessionCount} | started=${e.startedAt}`;
+      const status = effortStatus(store, e.id);
+      return `${e.name} | ${active} | logged=${formatDuration(status.totalMs)} | sessions=${e.sessionCount} | started=${e.startedAt}`;
     });
     return textResult(lines.join("\n"));
   },
@@ -79,23 +91,31 @@ server.tool(
 
 server.tool(
   "start_effort",
-  "Create or select a named effort in the local store and make it active.",
+  "Create or select a named effort in the local store and make it active. Requires AGENT_WALLCLOCK_WRITES=1.",
   { name: z.string().min(1).describe("Effort name, e.g. auth-rewrite") },
   async ({ name }) => {
-    let store = loadStore(STORE_DIR);
-    const result = startEffort(store, name);
-    saveStore(result.store, STORE_DIR);
+    requireWrites();
+    let created = false;
+    let effortName = "";
+    let effortId = "";
+    updateStore(STORE_DIR, (store) => {
+      const result = startEffort(store, name);
+      created = result.created;
+      effortName = result.effort.name;
+      effortId = result.effort.id;
+      return result.store;
+    });
     return textResult(
-      result.created
-        ? `Created effort "${result.effort.name}" (${result.effort.id})`
-        : `Selected existing effort "${result.effort.name}" (${result.effort.id})`,
+      created
+        ? `Created effort "${effortName}" (${effortId})`
+        : `Selected existing effort "${effortName}" (${effortId})`,
     );
   },
 );
 
 server.tool(
   "log_session",
-  "Manage work sessions. action=start opens a session on an effort; action=end closes the open session and adds its duration to the effort; action=manual adds a duration without an open session.",
+  "Manage work sessions. action=start opens a session on an effort; action=end closes the open session and adds its duration to the effort; action=manual adds a duration without an open session. Requires AGENT_WALLCLOCK_WRITES=1.",
   {
     action: z.enum(["start", "end", "manual"]),
     effort: z.string().optional().describe("Effort name or id (for start/manual)"),
@@ -105,46 +125,48 @@ server.tool(
       .describe("For manual only: duration like 30m, 2h, 90s"),
   },
   async ({ action, effort, duration }) => {
-    let store = loadStore(STORE_DIR);
+    requireWrites();
 
     if (action === "start") {
-      const result = startSession(store, effort);
-      saveStore(result.store, STORE_DIR);
-      return textResult(`Session open on "${result.effort.name}" (${result.session.id})`);
+      let effortName = "";
+      let sessionId = "";
+      updateStore(STORE_DIR, (store) => {
+        const result = startSession(store, effort);
+        effortName = result.effort.name;
+        sessionId = result.session.id;
+        return result.store;
+      });
+      return textResult(`Session open on "${effortName}" (${sessionId})`);
     }
 
     if (action === "end") {
-      const result = endSession(store);
-      saveStore(result.store, STORE_DIR);
+      let durationMs = 0;
+      let totalMs = 0;
+      updateStore(STORE_DIR, (store) => {
+        const result = endSession(store);
+        durationMs = result.durationMs;
+        totalMs = result.effort.totalMs;
+        return result.store;
+      });
       return textResult(
-        `Session closed. Duration=${formatDuration(result.durationMs)}. Effort total=${formatDuration(result.effort.totalMs)}`,
+        `Session closed. Duration=${formatDuration(durationMs)}. Effort total=${formatDuration(totalMs)}`,
       );
     }
 
     if (!effort || !duration) {
       throw new Error("manual log_session requires effort and duration (e.g. 30m)");
     }
-    const match = duration.trim().toLowerCase().match(/^(\d+(?:\.\d+)?)(ms|s|m|h|d)$/);
-    if (!match) {
-      throw new Error(`Invalid duration "${duration}". Use 30m, 2h, 90s, or 1d.`);
-    }
-    const value = Number(match[1]);
-    const unit = match[2];
-    const mult =
-      unit === "ms"
-        ? 1
-        : unit === "s"
-          ? 1000
-          : unit === "m"
-            ? 60_000
-            : unit === "h"
-              ? 3_600_000
-              : 86_400_000;
-    const ms = Math.round(value * mult);
-    const result = logManualDuration(store, effort, ms);
-    saveStore(result.store, STORE_DIR);
+    const ms = parseDuration(duration);
+    let effortName = "";
+    let totalMs = 0;
+    updateStore(STORE_DIR, (store) => {
+      const result = logManualDuration(store, effort, ms);
+      effortName = result.effort.name;
+      totalMs = result.effort.totalMs;
+      return result.store;
+    });
     return textResult(
-      `Logged ${formatDuration(ms)} on "${result.effort.name}". Total=${formatDuration(result.effort.totalMs)}`,
+      `Logged ${formatDuration(ms)} on "${effortName}". Total=${formatDuration(totalMs)}`,
     );
   },
 );

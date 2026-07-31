@@ -3,11 +3,18 @@ import { ageMs, formatDuration } from "./format.js";
 import { getActiveSession } from "./session.js";
 import type { BriefingInput, StoreData } from "./types.js";
 
+/** Briefings older than this should be refreshed before time-based advice. */
+export const BRIEFING_STALE_AFTER_MS = 15 * 60 * 1000;
+
+/** Open sessions older than this get a warning in the briefing. */
+export const OPEN_SESSION_WARN_AFTER_MS = 4 * 60 * 60 * 1000;
+
 export const MODEL_RULES = [
   "Trust only this Temporal Briefing for clock, session age, and effort duration.",
   "Never invent time of day, how long the user has been working, or effort history.",
   "If a field is missing or unknown, say unknown or ask — do not guess.",
   "Do not give sleep, circadian, or \"you have done enough\" advice based on invented duration.",
+  "If Generated-at is older than the stated freshness window, ask for a refreshed briefing before time-based claims.",
 ].join(" ");
 
 export function buildBriefingInput(
@@ -39,11 +46,15 @@ export function buildBriefingInput(
 
   return {
     now,
+    generatedAt: now.iso,
+    staleAfterMs: BRIEFING_STALE_AFTER_MS,
     activeEffort,
     activeSession,
     sessionAgeMs,
     effortAgeMs,
     effortTotalMs,
+    openSessionWarn:
+      sessionAgeMs != null && sessionAgeMs >= OPEN_SESSION_WARN_AFTER_MS,
   };
 }
 
@@ -51,6 +62,10 @@ export function renderBriefing(store: StoreData, nowDate: Date = new Date()): st
   const input = buildBriefingInput(store, nowDate);
   const lines: string[] = [
     "# Temporal Briefing (Agent Wallclock)",
+    "",
+    "## Freshness",
+    `- Generated at: ${input.generatedAt}`,
+    `- Stale after: ${formatDuration(input.staleAfterMs)} — refresh with \`wallclock brief\` or MCP \`get_briefing\` before time-based advice`,
     "",
     "## Now",
     `- Local date: ${input.now.localDate}`,
@@ -66,6 +81,11 @@ export function renderBriefing(store: StoreData, nowDate: Date = new Date()): st
     lines.push(`- Status: open`);
     lines.push(`- Started: ${input.activeSession.startedAt}`);
     lines.push(`- Age: ${formatDuration(input.sessionAgeMs)} (${input.sessionAgeMs} ms)`);
+    if (input.openSessionWarn) {
+      lines.push(
+        `- Warning: open session older than ${formatDuration(OPEN_SESSION_WARN_AFTER_MS)} — confirm it is still intentional, or run \`wallclock session end\``,
+      );
+    }
   } else {
     lines.push(`- Status: none`);
     lines.push(`- Age: unknown`);

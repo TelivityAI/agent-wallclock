@@ -1,6 +1,7 @@
 export * from "./types.js";
 export * from "./clock.js";
 export * from "./format.js";
+export * from "./duration.js";
 export * from "./store.js";
 export * from "./effort.js";
 export * from "./session.js";

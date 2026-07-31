@@ -4,7 +4,10 @@
       "command": "node",
       "args": [
         "/ABSOLUTE/PATH/TO/agent-wallclock/packages/mcp/dist/server.js"
-      ]
+      ],
+      "env": {
+        "AGENT_WALLCLOCK_WRITES": "0"
+      }
     }
   }
 }
