@@ -1,13 +1,17 @@
 import { getNow } from "./clock.js";
+import { loadConfig } from "./config.js";
 import { ageMs, formatDuration } from "./format.js";
 import { getActiveSession } from "./session.js";
-import type { BriefingInput, StoreData } from "./types.js";
+import type { BriefingInput, BriefingOptions, StoreData } from "./types.js";
 
-/** Briefings older than this should be refreshed before time-based advice. */
+/** @deprecated Prefer loadConfig().staleAfterMs */
 export const BRIEFING_STALE_AFTER_MS = 15 * 60 * 1000;
 
-/** Open sessions older than this get a warning in the briefing. */
+/** @deprecated Prefer loadConfig().openSessionWarnAfterMs */
 export const OPEN_SESSION_WARN_AFTER_MS = 4 * 60 * 60 * 1000;
+
+/** @deprecated Prefer loadConfig().openSessionSoftCapMs */
+export const OPEN_SESSION_SOFT_CAP_MS = 8 * 60 * 60 * 1000;
 
 export const MODEL_RULES = [
   "Trust only this Temporal Briefing for clock, session age, and effort duration.",
@@ -19,8 +23,18 @@ export const MODEL_RULES = [
 
 export function buildBriefingInput(
   store: StoreData,
-  nowDate: Date = new Date(),
+  nowDateOrOpts: Date | BriefingOptions = new Date(),
 ): BriefingInput {
+  const opts: BriefingOptions =
+    nowDateOrOpts instanceof Date ? { nowDate: nowDateOrOpts } : nowDateOrOpts;
+  const cfg = loadConfig();
+  const nowDate = opts.nowDate ?? new Date();
+  const staleAfterMs = opts.staleAfterMs ?? cfg.staleAfterMs;
+  const openSessionWarnAfterMs =
+    opts.openSessionWarnAfterMs ?? cfg.openSessionWarnAfterMs;
+  const openSessionSoftCapMs =
+    opts.openSessionSoftCapMs ?? cfg.openSessionSoftCapMs;
+
   const now = getNow(nowDate);
   const activeSession = getActiveSession(store);
   const activeEffort = store.activeEffortId
@@ -47,19 +61,30 @@ export function buildBriefingInput(
   return {
     now,
     generatedAt: now.iso,
-    staleAfterMs: BRIEFING_STALE_AFTER_MS,
+    staleAfterMs,
     activeEffort,
     activeSession,
     sessionAgeMs,
     effortAgeMs,
     effortTotalMs,
     openSessionWarn:
-      sessionAgeMs != null && sessionAgeMs >= OPEN_SESSION_WARN_AFTER_MS,
+      sessionAgeMs != null && sessionAgeMs >= openSessionWarnAfterMs,
+    openSessionCapNote:
+      sessionAgeMs != null && sessionAgeMs >= openSessionSoftCapMs,
   };
 }
 
-export function renderBriefing(store: StoreData, nowDate: Date = new Date()): string {
-  const input = buildBriefingInput(store, nowDate);
+export function renderBriefing(
+  store: StoreData,
+  nowDateOrOpts: Date | BriefingOptions = new Date(),
+): string {
+  const opts: BriefingOptions =
+    nowDateOrOpts instanceof Date ? { nowDate: nowDateOrOpts } : nowDateOrOpts;
+  const input = buildBriefingInput(store, opts);
+  const cfg = loadConfig();
+  const warnAfter = opts.openSessionWarnAfterMs ?? cfg.openSessionWarnAfterMs;
+  const softCap = opts.openSessionSoftCapMs ?? cfg.openSessionSoftCapMs;
+
   const lines: string[] = [
     "# Temporal Briefing (Agent Wallclock)",
     "",
@@ -79,11 +104,16 @@ export function renderBriefing(store: StoreData, nowDate: Date = new Date()): st
 
   if (input.activeSession && input.sessionAgeMs != null) {
     lines.push(`- Status: open`);
-    lines.push(`- Started: ${input.activeSession.startedAt}`);
+    lines.push(`- Started: ${input.activeSession.startedAt} (UTC)`);
     lines.push(`- Age: ${formatDuration(input.sessionAgeMs)} (${input.sessionAgeMs} ms)`);
     if (input.openSessionWarn) {
       lines.push(
-        `- Warning: open session older than ${formatDuration(OPEN_SESSION_WARN_AFTER_MS)} — confirm it is still intentional, or run \`wallclock session end\``,
+        `- Warning: open session older than ${formatDuration(warnAfter)} — confirm it is still intentional, or run \`wallclock session end\``,
+      );
+    }
+    if (input.openSessionCapNote) {
+      lines.push(
+        `- Soft cap: open session exceeded ${formatDuration(softCap)} — consider ending and starting a fresh session block`,
       );
     }
   } else {
@@ -96,7 +126,7 @@ export function renderBriefing(store: StoreData, nowDate: Date = new Date()): st
 
   if (input.activeEffort) {
     lines.push(`- Name: ${input.activeEffort.name}`);
-    lines.push(`- Started: ${input.activeEffort.startedAt}`);
+    lines.push(`- Started: ${input.activeEffort.startedAt} (UTC)`);
     lines.push(
       `- Calendar age: ${input.effortAgeMs != null ? formatDuration(input.effortAgeMs) : "unknown"}`,
     );
@@ -104,7 +134,9 @@ export function renderBriefing(store: StoreData, nowDate: Date = new Date()): st
       `- Logged work time: ${input.effortTotalMs != null ? formatDuration(input.effortTotalMs) : "unknown"} (includes open session if any)`,
     );
     lines.push(`- Sessions: ${input.activeEffort.sessionCount}`);
-    lines.push(`- Last activity: ${input.activeEffort.lastActivityAt ?? "unknown"}`);
+    lines.push(
+      `- Last activity: ${input.activeEffort.lastActivityAt != null ? `${input.activeEffort.lastActivityAt} (UTC)` : "unknown"}`,
+    );
   } else {
     lines.push(`- Name: none`);
     lines.push(`- Calendar age: unknown`);
@@ -117,4 +149,27 @@ export function renderBriefing(store: StoreData, nowDate: Date = new Date()): st
   lines.push("");
 
   return lines.join("\n");
+}
+
+/** One-screen compact briefing for terminals. */
+export function renderBriefingCompact(
+  store: StoreData,
+  nowDateOrOpts: Date | BriefingOptions = new Date(),
+): string {
+  const opts: BriefingOptions =
+    nowDateOrOpts instanceof Date ? { nowDate: nowDateOrOpts } : nowDateOrOpts;
+  const input = buildBriefingInput(store, opts);
+  const session =
+    input.activeSession && input.sessionAgeMs != null
+      ? `open ${formatDuration(input.sessionAgeMs)}`
+      : "none";
+  const effort = input.activeEffort
+    ? `${input.activeEffort.name} logged=${formatDuration(input.effortTotalMs)}`
+    : "none";
+  return [
+    `now ${input.now.localDate} ${input.now.localTime} ${input.now.weekday} (${input.now.timezone})`,
+    `iso(UTC) ${input.now.iso}  stale-after ${formatDuration(input.staleAfterMs)}`,
+    `session ${session}`,
+    `effort ${effort}`,
+  ].join("\n");
 }

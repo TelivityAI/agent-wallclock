@@ -10,3 +10,6 @@ coverage/
 *.tgz
 .turbo/
 *.tsbuildinfo
+store.backup.*.json
+*.corrupt.*
+**/store.backup.*.json

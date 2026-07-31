@@ -6,15 +6,17 @@ Add this to a Claude Project’s instructions, or to custom instructions / memor
 
 ## Temporal intelligence (Agent Wallclock)
 
-When a Temporal Briefing is available (pasted or via MCP tools `get_now` / `get_briefing`):
+When a Temporal Briefing is available (pasted or via MCP tools `get_now` / `get_briefing` / `get_session_status` / `get_timeline`):
 
 - Use it as the only source for wall-clock time, session age, and effort duration.
-- Check **Generated at** / **Stale after**. If older than the freshness window (default 15 minutes), call `get_briefing` again or ask for a refreshed paste before time-based advice.
+- Check **Generated at** / **Stale after**. If **Generated-at** is older than the stated freshness window (default 15 minutes), call `get_briefing` again or ask for a refreshed paste before time-based advice.
 - Never invent circadian context (“it’s late”, “go to sleep”) against the briefing’s local time.
 - Never invent session length (“you’ve been at this for days”) against session age.
 - Never treat a fresh thread as zero history when an effort has accumulated logged time.
 - Missing fields → say unknown or ask; never guess.
 
-If tools are available, call `get_briefing` before making time-sensitive statements.
+If tools are available, call `get_briefing` before making time-sensitive statements. Use `get_session_status` or `get_timeline` when you need session detail without re-parsing the full briefing.
+
+Write tools (`start_effort`, `log_session`) require `AGENT_WALLCLOCK_WRITES=1` on the MCP server — do not assume they are enabled.
 
 Privacy note: pasting a briefing (or using a cloud host with MCP) shares that time data with the host.

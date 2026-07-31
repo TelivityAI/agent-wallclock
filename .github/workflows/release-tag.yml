@@ -1,0 +1,32 @@
+name: release-tag
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Annotated tag to create (e.g. v0.1.1)"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Validate tag format
+        run: |
+          if ! echo "${{ inputs.version }}" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "Tag must match vMAJOR.MINOR.PATCH (e.g. v0.1.1)"
+            exit 1
+          fi
+      - name: Create annotated tag
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "${{ inputs.version }}" -m "Release ${{ inputs.version }}"
+          git push origin "${{ inputs.version }}"

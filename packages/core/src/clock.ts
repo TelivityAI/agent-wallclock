@@ -10,6 +10,23 @@ const WEEKDAYS = [
   "Saturday",
 ] as const;
 
+/** Injectable clock for deterministic tests. Defaults to system time. */
+export type Clock = () => Date;
+
+let clockImpl: Clock = () => new Date();
+
+export function setClock(clock: Clock): void {
+  clockImpl = clock;
+}
+
+export function resetClock(): void {
+  clockImpl = () => new Date();
+}
+
+export function now(): Date {
+  return clockImpl();
+}
+
 function pad(n: number, width = 2): string {
   return String(n).padStart(width, "0");
 }
@@ -23,7 +40,7 @@ function formatOffset(date: Date): string {
   return `${sign}${hours}:${minutes}`;
 }
 
-export function getTimezoneName(date: Date = new Date()): string {
+export function getTimezoneName(date: Date = now()): string {
   try {
     const parts = new Intl.DateTimeFormat("en-US", {
       timeZoneName: "long",
@@ -42,7 +59,7 @@ export function getIanaTimeZone(): string {
   }
 }
 
-export function getNow(date: Date = new Date()): NowInfo {
+export function getNow(date: Date = now()): NowInfo {
   const localDate = `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
   const localTime = `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
   const iana = getIanaTimeZone();

@@ -9,9 +9,12 @@
   ],
   "scripts": {
     "build": "npm run build -w @agent-wallclock/core && npm run build -w @agent-wallclock/cli && npm run build -w @agent-wallclock/mcp",
-    "test": "npm run test -w @agent-wallclock/core",
+    "test": "npm run test -w @agent-wallclock/core && npm run test -w @agent-wallclock/cli",
     "smoke": "npm run build && node scripts/smoke.mjs && node scripts/mcp-smoke.mjs",
-    "wallclock": "node packages/cli/dist/bin.js"
+    "wallclock": "node -e \"require('fs').accessSync('packages/cli/dist/bin.js')\" && node packages/cli/dist/bin.js",
+    "qa:local": "node scripts/qa-local.mjs",
+    "lint": "npm run lint -w @agent-wallclock/core && npm run lint -w @agent-wallclock/cli && npm run lint -w @agent-wallclock/mcp",
+    "publish:dry-run": "node scripts/publish-dry-run.mjs"
   },
   "engines": {
     "node": ">=20"
