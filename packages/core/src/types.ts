@@ -5,6 +5,8 @@ export interface Effort {
   totalMs: number;
   sessionCount: number;
   lastActivityAt: string | null;
+  /** Soft-hidden from default list views; retained in store. */
+  archived?: boolean;
 }
 
 export interface Session {
@@ -14,8 +16,15 @@ export interface Session {
   endedAt: string | null;
 }
 
+/**
+ * Store schema version 1 (current on-disk format).
+ * Version 2 migration path is prepared for archived flags and future fields;
+ * loaders accept v1 and normalize to the in-memory shape.
+ */
+export type StoreVersion = 1 | 2;
+
 export interface StoreData {
-  version: 1;
+  version: StoreVersion;
   efforts: Effort[];
   sessions: Session[];
   activeSessionId: string | null;
@@ -42,4 +51,12 @@ export interface BriefingInput {
   effortAgeMs: number | null;
   effortTotalMs: number | null;
   openSessionWarn: boolean;
+  openSessionCapNote: boolean;
+}
+
+export interface BriefingOptions {
+  staleAfterMs?: number;
+  openSessionWarnAfterMs?: number;
+  openSessionSoftCapMs?: number;
+  nowDate?: Date;
 }

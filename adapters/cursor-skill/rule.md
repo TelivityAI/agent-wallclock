@@ -1,3 +1,3 @@
 # Cursor user rule fragment — Agent Wallclock
 
-Temporal context: Use Agent Wallclock. Never invent clock time, session age, or effort duration. Prefer MCP `get_briefing` or a fresh CLI briefing. Refresh if **Generated at** is outside the freshness window. If fields are missing, say unknown. Do not invent sleep/rest advice from guessed time. Do not assume `wallclock` is on PATH.
+Temporal context: Use Agent Wallclock. Never invent clock time, session age, or effort duration. **MCP-first:** call `get_briefing` (or `get_session_status` / `get_timeline`) when the server is configured. Otherwise run `npm exec -w @agent-wallclock/cli -- wallclock brief` or `node /ABSOLUTE/PATH/TO/agent-wallclock/packages/cli/dist/bin.js brief` — do not assume bare `wallclock` is on PATH. Refresh if **Generated at** is outside the freshness window (default 15m). If fields are missing, say unknown. Do not invent sleep/rest advice from guessed time.

@@ -1,0 +1,14 @@
+# CODEOWNERS
+#
+# TelivityAI maintainers review changes to core packages, MCP surface,
+# adapters, and release docs. Update @TelivityAI to the actual GitHub team
+# or maintainer handles when known.
+
+* @TelivityAI
+
+/packages/core/     @TelivityAI
+/packages/cli/      @TelivityAI
+/packages/mcp/      @TelivityAI
+/adapters/          @TelivityAI
+/docs/              @TelivityAI
+/.github/           @TelivityAI

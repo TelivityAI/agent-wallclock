@@ -1,6 +1,17 @@
 import { spawnSync } from "node:child_process";
 import { platform } from "node:os";
 
+export function clipboardHint(): string {
+  const os = platform();
+  if (os === "darwin") {
+    return "On macOS, ensure `pbcopy` is available in PATH.";
+  }
+  if (os === "win32") {
+    return "On Windows, ensure `clip` is available (usually built-in).";
+  }
+  return "On Linux, install `wl-copy` (Wayland) or `xclip` (X11).";
+}
+
 export function copyToClipboard(text: string): boolean {
   const os = platform();
   try {

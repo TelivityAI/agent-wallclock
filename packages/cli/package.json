@@ -8,13 +8,20 @@
     "wallclock": "./dist/bin.js"
   },
   "files": [
-    "dist"
+    "dist",
+    "README.md"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.json"
+    "build": "tsc -p tsconfig.json",
+    "test": "npm run build && node --test --test-reporter=spec dist/*.test.js",
+    "lint": "tsc -p tsconfig.json --noEmit",
+    "prepublishOnly": "npm run build"
   },
   "dependencies": {
-    "@agent-wallclock/core": "0.1.0"
+    "@agent-wallclock/core": "*"
+  },
+  "engines": {
+    "node": ">=20"
   },
   "devDependencies": {
     "@types/node": "^22.13.10",

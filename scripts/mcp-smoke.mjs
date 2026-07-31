@@ -18,8 +18,19 @@ import {
 } from "../packages/core/dist/index.js";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
+const serverPath = join(root, "packages", "mcp", "dist", "server.js");
 const home = mkdtempSync(join(tmpdir(), "wallclock-mcp-smoke-"));
 process.env.AGENT_WALLCLOCK_HOME = home;
+
+const EXPECTED_TOOLS = [
+  "get_now",
+  "get_briefing",
+  "list_efforts",
+  "get_session_status",
+  "get_timeline",
+  "start_effort",
+  "log_session",
+];
 
 function send(proc, msg) {
   proc.stdin.write(`${JSON.stringify(msg)}\n`);
@@ -43,7 +54,7 @@ function readMessages(proc, count, timeoutMs = 8000) {
         if (!line) continue;
         try {
           messages.push(JSON.parse(line));
-        } catch (err) {
+        } catch {
           cleanup();
           reject(new Error(`invalid JSON from MCP: ${line}`));
           return;
@@ -65,8 +76,21 @@ function readMessages(proc, count, timeoutMs = 8000) {
   });
 }
 
-async function mcpProtocolSmoke() {
-  const serverPath = join(root, "packages/mcp/dist/server.js");
+async function callTool(proc, id, name, args = {}) {
+  send(proc, {
+    jsonrpc: "2.0",
+    id,
+    method: "tools/call",
+    params: { name, arguments: args },
+  });
+  const [resp] = await readMessages(proc, 1);
+  if (resp.error) {
+    throw new Error(`${name} failed: ${JSON.stringify(resp.error)}`);
+  }
+  return resp.result;
+}
+
+async function mcpProtocolSmoke({ writesEnabled = false } = {}) {
   if (!existsSync(serverPath)) {
     throw new Error("MCP server build missing");
   }
@@ -75,8 +99,7 @@ async function mcpProtocolSmoke() {
     env: {
       ...process.env,
       AGENT_WALLCLOCK_HOME: home,
-      // writes off by default — exercise read tools
-      AGENT_WALLCLOCK_WRITES: "0",
+      AGENT_WALLCLOCK_WRITES: writesEnabled ? "1" : "0",
     },
     stdio: ["pipe", "pipe", "pipe"],
   });
@@ -98,10 +121,7 @@ async function mcpProtocolSmoke() {
       throw new Error("initialize missing serverInfo");
     }
 
-    send(proc, {
-      jsonrpc: "2.0",
-      method: "notifications/initialized",
-    });
+    send(proc, { jsonrpc: "2.0", method: "notifications/initialized" });
 
     send(proc, {
       jsonrpc: "2.0",
@@ -110,57 +130,61 @@ async function mcpProtocolSmoke() {
       params: {},
     });
     const [toolsResp] = await readMessages(proc, 1);
-    const names = (toolsResp.result?.tools ?? []).map((t) => t.name);
-    for (const required of ["get_now", "get_briefing", "list_efforts", "start_effort", "log_session"]) {
-      if (!names.includes(required)) {
-        throw new Error(`tools/list missing ${required}`);
-      }
+    const names = (toolsResp.result?.tools ?? []).map((t) => t.name).sort();
+    const expected = [...EXPECTED_TOOLS].sort();
+    if (names.length !== expected.length || names.some((n, i) => n !== expected[i])) {
+      throw new Error(`tools/list mismatch.\n  got: ${names.join(", ")}\n  expected: ${expected.join(", ")}`);
     }
 
-    send(proc, {
-      jsonrpc: "2.0",
-      id: 3,
-      method: "tools/call",
-      params: { name: "get_now", arguments: {} },
-    });
-    const [nowResp] = await readMessages(proc, 1);
-    const nowText = nowResp.result?.content?.[0]?.text ?? "";
+    const nowResult = await callTool(proc, 3, "get_now");
+    const nowText = nowResult?.content?.[0]?.text ?? "";
     if (!nowText.includes("local_date=")) {
       throw new Error(`get_now unexpected: ${nowText}`);
     }
 
-    send(proc, {
-      jsonrpc: "2.0",
-      id: 4,
-      method: "tools/call",
-      params: { name: "get_briefing", arguments: {} },
-    });
-    const [briefResp] = await readMessages(proc, 1);
-    const briefText = briefResp.result?.content?.[0]?.text ?? "";
+    const briefResult = await callTool(proc, 4, "get_briefing");
+    const briefText = briefResult?.content?.[0]?.text ?? "";
     if (!briefText.includes("Temporal Briefing") || !briefText.includes("Generated at:")) {
       throw new Error(`get_briefing unexpected: ${briefText.slice(0, 200)}`);
     }
 
-    send(proc, {
-      jsonrpc: "2.0",
-      id: 5,
-      method: "tools/call",
-      params: { name: "start_effort", arguments: { name: "should-fail" } },
-    });
-    const [writeResp] = await readMessages(proc, 1);
-    const writeText =
-      writeResp.result?.content?.[0]?.text ??
-      writeResp.error?.message ??
-      JSON.stringify(writeResp);
-    if (!/AGENT_WALLCLOCK_WRITES|disabled|writes/i.test(writeText)) {
-      // MCP SDK may wrap tool errors as isError content
-      const isError = writeResp.result?.isError;
-      if (!isError && !/AGENT_WALLCLOCK_WRITES|disabled|writes/i.test(JSON.stringify(writeResp))) {
-        throw new Error(`expected writes-disabled error, got: ${writeText}`);
+    const sessionResult = await callTool(proc, 5, "get_session_status");
+    const sessionText = sessionResult?.content?.[0]?.text ?? "";
+    if (!/status=(open|none)/.test(sessionText)) {
+      throw new Error(`get_session_status unexpected: ${sessionText}`);
+    }
+
+    const timelineResult = await callTool(proc, 6, "get_timeline", { limit: 5 });
+    const timelineText = timelineResult?.content?.[0]?.text ?? "";
+    if (!timelineText || timelineText.includes("No sessions")) {
+      throw new Error(`get_timeline unexpected: ${timelineText}`);
+    }
+
+    if (writesEnabled) {
+      const writeOk = await callTool(proc, 7, "start_effort", { name: "mcp-write-test" });
+      const writeOkText = writeOk?.content?.[0]?.text ?? "";
+      if (writeOk?.isError || !/effort|Created|Selected/i.test(writeOkText)) {
+        throw new Error(`start_effort with writes enabled failed: ${writeOkText}`);
+      }
+    } else {
+      send(proc, {
+        jsonrpc: "2.0",
+        id: 7,
+        method: "tools/call",
+        params: { name: "start_effort", arguments: { name: "should-fail" } },
+      });
+      const [writeResp] = await readMessages(proc, 1);
+      const writeResult = writeResp.result;
+      if (!writeResult?.isError) {
+        throw new Error(`expected isError for write-denied start_effort, got: ${JSON.stringify(writeResult)}`);
+      }
+      const writeText = writeResult?.content?.[0]?.text ?? "";
+      if (!/AGENT_WALLCLOCK_WRITES|disabled|writes/i.test(writeText)) {
+        throw new Error(`expected writes-disabled message, got: ${writeText}`);
       }
     }
 
-    console.log("MCP stdio protocol smoke OK");
+    console.log(`MCP stdio protocol smoke OK (writes=${writesEnabled ? "1" : "0"})`);
   } finally {
     proc.kill("SIGTERM");
   }
@@ -187,18 +211,17 @@ try {
   ({ store } = logManualDuration(store, "docs-pass", 60_000));
   saveStore(store, home);
 
-  const serverPath = new URL("../packages/mcp/dist/server.js", import.meta.url);
   if (!existsSync(serverPath)) {
     throw new Error("MCP server build missing");
   }
 
-  // Import without starting stdio (server guards on direct-run).
-  await import(serverPath.href);
+  await import(new URL(serverPath, import.meta.url).href);
 
   console.log("MCP/core tool-path smoke OK");
   console.log(`default store helper: ${getDefaultStoreDir() ? "ok" : "missing"}`);
 
-  await mcpProtocolSmoke();
+  await mcpProtocolSmoke({ writesEnabled: false });
+  await mcpProtocolSmoke({ writesEnabled: true });
 } finally {
   rmSync(home, { recursive: true, force: true });
 }

@@ -8,7 +8,7 @@ You have access to Agent Wallclock temporal context when the user pastes a Tempo
 
 Rules:
 - Trust only that briefing for local time, timezone, session age, and effort logged time.
-- Check **Generated at** / **Stale after**. If the briefing is older than its freshness window (default 15 minutes), ask the user to paste a refreshed `wallclock brief` before making time-based claims.
+- Check **Generated at** / **Stale after**. If **Generated-at** is older than the stated freshness window (default 15 minutes), ask the user to paste a refreshed `wallclock brief` before making time-based claims.
 - Never invent time of day or how long the user has been working.
 - If duration or clock fields are missing, say unknown — do not guess.
 - Do not tell the user to go to sleep or that they have been at something for days/hours unless the briefing supports it.

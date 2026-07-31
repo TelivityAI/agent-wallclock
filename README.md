@@ -27,17 +27,38 @@ No cloud sync. No account. The Wallclock process itself makes no network calls. 
 
 ---
 
-## Demo: generate a briefing
+## Install (canonical)
 
 ```bash
 git clone https://github.com/TelivityAI/agent-wallclock.git
 cd agent-wallclock
-npm install && npm run build
-
-# put `wallclock` on PATH for this machine
+npm install
+npm run build
 npm link -w @agent-wallclock/cli
-# or one-off: npm exec -w @agent-wallclock/cli -- wallclock ...
+wallclock --help
+```
 
+Requirements: Node.js 20+.
+
+One-off without linking:
+
+```bash
+npm exec -w @agent-wallclock/cli -- wallclock --help
+# or
+node packages/cli/dist/bin.js --help
+```
+
+### Verify
+
+```bash
+wallclock now && wallclock doctor
+```
+
+`doctor` checks store load, permissions, and that CLI/MCP builds exist.
+
+### Quick start
+
+```bash
 wallclock init
 wallclock effort start auth-rewrite
 wallclock session start
@@ -59,23 +80,16 @@ Example output (real CLI shape; durations use `d`/`h`/`m`/`s`):
 ## Now
 - Local date: 2026-07-31
 - Local time: 02:30:22
-- Weekday: Friday
-- Timezone: America/Chicago (Central Daylight Time, UTC-05:00)
-- ISO (UTC): 2026-07-31T07:30:22.605Z
-
-## Active session
-- Status: open
-- Started: 2026-07-31T07:18:22.580Z
-- Age: 12m (720025 ms)
-
-## Active effort
-- Name: auth-rewrite
-- Calendar age: 23d
-- Logged work time: 14h 20m (includes open session if any)
 ...
 ```
 
-That block is the whole product surface. Everything below is **how each host receives it**.
+Filled MCP config (absolute server path):
+
+```bash
+wallclock mcp-config --print cursor
+wallclock mcp-config --print claude
+wallclock mcp-config --print vscode
+```
 
 ---
 
@@ -88,14 +102,14 @@ ChatGPT cannot read your disk. You give it two things:
 | Standing rules | Paste [`adapters/chatgpt-custom-instructions.md`](adapters/chatgpt-custom-instructions.md) into **Customize ChatGPT → Custom instructions** |
 | Live clock | At the start of a session (or when time matters), paste a **fresh** `wallclock brief` into the chat |
 
-![MOCK: ChatGPT custom instructions + pasted briefing (illustrative UI)](docs/images/02-chatgpt-setup.png)
+![MOCK (illustrative only — not a live ChatGPT UI capture): custom instructions + pasted briefing](docs/images/02-chatgpt-setup.png)
 
 **Checklist**
 
 1. Open ChatGPT → profile → **Customize ChatGPT**.
 2. Put the adapter text in custom instructions.
 3. Run `wallclock brief --copy` on your machine.
-4. Paste into the chat before asking anything time-sensitive. Refresh if older than ~15 minutes.
+4. Paste into the chat before asking anything time-sensitive. Refresh if **Generated at** is outside the freshness window (~15 minutes default).
 5. Ask: “What time is it for me, and how long have I been on auth-rewrite?” — it should quote the briefing, not invent numbers.
 
 ---
@@ -109,7 +123,7 @@ Two paths (pick one or both):
 1. Add [`adapters/claude-project-instructions.md`](adapters/claude-project-instructions.md) to a **Project**’s instructions (or custom instructions).
 2. Paste a fresh `wallclock brief` into the chat when you start work.
 
-![MOCK: Claude chat using a Temporal Briefing (illustrative UI)](docs/images/03-claude-chat.png)
+![MOCK (illustrative only — not a live Claude UI capture): chat using a Temporal Briefing](docs/images/03-claude-chat.png)
 
 ### B) MCP (Claude Desktop)
 
@@ -128,13 +142,11 @@ Three paths (combine freely):
 
 | Path | What |
 |------|------|
-| Terminal | Agent runs absolute `node …/packages/cli/dist/bin.js brief` (or you paste). Do not assume `wallclock` is on PATH. |
-| Skill / rule | Copy [`adapters/cursor-skill/`](adapters/cursor-skill/) into your skills dir; add the rule fragment from `rule.md` |
+| Terminal | Agent runs `npm exec -w @agent-wallclock/cli -- wallclock brief` or absolute `node …/packages/cli/dist/bin.js brief`. Do not assume bare `wallclock` is on PATH. |
+| Skill / rule | Copy [`adapters/cursor-skill/`](adapters/cursor-skill/) to `~/.cursor/skills/agent-wallclock/` or project `.cursor/skills/agent-wallclock/`; add the rule fragment from `rule.md` |
 | MCP | Run `wallclock mcp-config --print cursor` (or edit [`adapters/mcp/cursor-mcp.json`](adapters/mcp/cursor-mcp.json)), enable the server |
 
-![MOCK: Cursor MCP with agent-wallclock tools (illustrative UI)](docs/images/04-cursor-mcp.png)
-
-**MCP tools:** `get_now`, `get_briefing`, `list_efforts` (read). `start_effort`, `log_session` require `AGENT_WALLCLOCK_WRITES=1`.
+![MOCK (illustrative only — not a live Cursor UI capture): MCP with agent-wallclock tools](docs/images/04-cursor-mcp.png)
 
 When the skill/rule is on, Cursor should call `get_briefing` (or run the CLI) instead of guessing “it’s late” or “you’ve been grinding for days.”
 
@@ -150,48 +162,43 @@ When the skill/rule is on, Cursor should call `get_briefing` (or run the CLI) in
 
 ---
 
-## Install
-
-```bash
-git clone https://github.com/TelivityAI/agent-wallclock.git
-cd agent-wallclock
-npm install
-npm run build
-
-# recommended: link the CLI onto PATH
-npm link -w @agent-wallclock/cli
-wallclock --help
-
-# one-off without linking
-npm exec -w @agent-wallclock/cli -- wallclock --help
-# or
-node packages/cli/dist/bin.js --help
-```
-
-Requirements: Node.js 20+.
-
-Filled MCP config with absolute server path:
-
-```bash
-wallclock mcp-config --print cursor
-wallclock mcp-config --print claude
-```
-
----
-
 ## Commands
 
 | Command | Purpose |
 |---------|---------|
 | `wallclock now` | Local date, time, timezone, weekday, ISO |
-| `wallclock brief` | Full Temporal Briefing (`--copy` when supported) |
-| `wallclock effort start\|list\|status\|log` | Named efforts + cumulative time (names are slug-normalized) |
-| `wallclock session start\|end` | Open/close a work block on an effort |
-| `wallclock timeline` | Recent sessions (open rows show live age) |
-| `wallclock mcp-config --print <claude\|cursor>` | Emit filled MCP JSON |
+| `wallclock brief` | Full Temporal Briefing (`--copy`, `--json`, `--compact`) |
+| `wallclock doctor [--repair]` | Health checks (store, builds, permissions) |
+| `wallclock where` | Show store path and config hints |
+| `wallclock --version` | Package version |
+| `wallclock completion bash\|zsh` | Shell completion script |
+| `wallclock effort start\|list\|status\|log` | Named efforts + cumulative time (`list --json`) |
+| `wallclock effort rename\|archive\|unarchive\|delete` | Manage efforts (`delete` requires `--confirm`) |
+| `wallclock session start\|end\|status` | Open/close/status work block (`start --force` end-and-restart) |
+| `wallclock timeline` | Recent sessions (`--json`, `--effort <name>`; open rows show live age) |
+| `wallclock store backup\|restore` | Snapshot or restore `store.json` |
+| `wallclock mcp-config --print <claude\|cursor\|vscode>` | Emit filled MCP JSON (`--check` verifies server build) |
 | `wallclock init` | Create `~/.agent-wallclock/` and point at adapters |
 
 Override store directory: `AGENT_WALLCLOCK_HOME=/path wallclock ...`
+
+Full help: `wallclock --help`. Troubleshooting: [`TROUBLESHOOTING.md`](TROUBLESHOOTING.md).
+
+---
+
+## MCP tools
+
+| Tool | Access | Purpose |
+|------|--------|---------|
+| `get_now` | read | System wall clock |
+| `get_briefing` | read | Full Temporal Briefing (check freshness) |
+| `list_efforts` | read | Efforts and logged durations |
+| `get_session_status` | read | Open session live age |
+| `get_timeline` | read | Recent sessions |
+| `start_effort` | write* | Create/select active effort |
+| `log_session` | write* | Session `start` / `end` / `manual` |
+
+\*Write tools require `AGENT_WALLCLOCK_WRITES=1` in MCP server `env`. Details: [`adapters/mcp/README.md`](adapters/mcp/README.md).
 
 ---
 
@@ -199,8 +206,9 @@ Override store directory: `AGENT_WALLCLOCK_HOME=/path wallclock ...`
 
 - State lives only under `~/.agent-wallclock/` (JSON; directory `0700`, file `0600` when the OS allows).
 - CLI and MCP make **no network calls**.
-- A model sees time data only if **you** paste a briefing or enable local MCP in that host — pasting **does** send that data to the host cloud.
-- MCP mutations default **off** (`AGENT_WALLCLOCK_WRITES=1` to enable).
+- **Clipboard:** `wallclock brief --copy` puts briefing text on your local clipboard; you choose when to paste.
+- **Paste trust:** pasting a briefing into ChatGPT, Claude, or similar **uploads** that time data to the host cloud.
+- **MCP trust:** when MCP is enabled, the host can **read** your local store via read tools. With `AGENT_WALLCLOCK_WRITES=1`, the host can **write** efforts/sessions too.
 
 ---
 
@@ -213,10 +221,15 @@ Override store directory: `AGENT_WALLCLOCK_HOME=/path wallclock ...`
 | `packages/mcp` | Local stdio MCP server |
 | `adapters/` | Copy-paste instructions per host |
 | `catalog/models.md` | Attach points cheat sheet |
+| `docs/` | Architecture, checklists, pass naming |
 | `docs/images/` | Demo screenshots (`01` real CLI; `02`–`04` labeled MOCK) |
 
 ---
 
+## Contributing
+
+See [`CONTRIBUTING.md`](CONTRIBUTING.md). Run `npm test` and `npm run smoke` before PRs.
+
 ## License
 
-Apache-2.0
+Apache-2.0 — see [`LICENSE`](LICENSE) and [`NOTICE`](NOTICE).

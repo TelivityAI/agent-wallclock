@@ -5,7 +5,7 @@ import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
-const bin = join(root, "packages/cli/dist/bin.js");
+const bin = join(root, "packages", "cli", "dist", "bin.js");
 const home = mkdtempSync(join(tmpdir(), "wallclock-smoke-"));
 
 function run(args, { expectFail = false } = {}) {
@@ -45,6 +45,33 @@ try {
   }
   if (!brief.includes("Generated at:")) {
     throw new Error("brief missing freshness");
+  }
+  const briefJson = run(["brief", "--json"]);
+  const parsed = JSON.parse(briefJson);
+  if (!parsed.generatedAt || !parsed.now) {
+    throw new Error("brief --json missing expected fields");
+  }
+  const version = run(["--version"]).trim();
+  if (!/^\d+\.\d+\.\d+/.test(version)) {
+    throw new Error(`unexpected --version output: ${version}`);
+  }
+  const where = run(["where"]);
+  if (!where.includes("store_dir:") || !where.includes("mcp_server:")) {
+    throw new Error("where missing expected paths");
+  }
+  const doctor = run(["doctor"]);
+  if (!doctor.includes("Doctor OK")) {
+    throw new Error("doctor did not pass");
+  }
+  const sessionStatus = run(["session", "status"]);
+  if (!sessionStatus.includes("Status:") || !sessionStatus.includes("open")) {
+    throw new Error("session status missing open session");
+  }
+  run(["effort", "start", "docs"]);
+  const effortList = run(["effort", "list", "--json"]);
+  const efforts = JSON.parse(effortList);
+  if (!Array.isArray(efforts) || efforts.length < 2) {
+    throw new Error("effort list --json expected multiple efforts");
   }
   const cfg = run(["mcp-config", "--print", "cursor"]);
   if (!cfg.includes("mcpServers") || !cfg.includes("server.js")) {

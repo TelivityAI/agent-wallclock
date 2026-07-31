@@ -16,18 +16,50 @@ export function getActiveSession(store: StoreData): Session | null {
   return store.sessions.find((s) => s.id === store.activeSessionId) ?? null;
 }
 
+export function sessionStatus(
+  store: StoreData,
+  now: Date = new Date(),
+): {
+  session: Session | null;
+  effort: Effort | null;
+  ageMs: number | null;
+} {
+  const session = getActiveSession(store);
+  if (!session) {
+    return { session: null, effort: null, ageMs: null };
+  }
+  const effort = store.efforts.find((e) => e.id === session.effortId) ?? null;
+  const age = ageMs(session.startedAt, now);
+  return {
+    session,
+    effort,
+    ageMs: Number.isFinite(age) ? age : null,
+  };
+}
+
 export function startSession(
   store: StoreData,
   effortNameOrId?: string,
   now: Date = new Date(),
-): { store: StoreData; session: Session; effort: Effort } {
-  if (store.activeSessionId) {
-    throw new Error("A session is already open. End it with `wallclock session end` first.");
+  opts: { force?: boolean } = {},
+): { store: StoreData; session: Session; effort: Effort; forcedEnd?: Session } {
+  let working = store;
+  let forcedEnd: Session | undefined;
+
+  if (working.activeSessionId) {
+    if (!opts.force) {
+      throw new Error(
+        "A session is already open. End it with `wallclock session end` first, or use `wallclock session start --force`.",
+      );
+    }
+    const ended = endSession(working, now);
+    working = ended.store;
+    forcedEnd = ended.session;
   }
 
-  let effortId = store.activeEffortId;
+  let effortId = working.activeEffortId;
   if (effortNameOrId) {
-    const found = findEffort(store, effortNameOrId);
+    const found = findEffort(working, effortNameOrId);
     if (!found) {
       throw new Error(`Effort not found: ${effortNameOrId}`);
     }
@@ -38,7 +70,7 @@ export function startSession(
     throw new Error("No active effort. Start one with `wallclock effort start <name>`.");
   }
 
-  const effort = getEffortOrThrow(store, effortId);
+  const effort = getEffortOrThrow(working, effortId);
   const session: Session = {
     id: newId("ses"),
     effortId: effort.id,
@@ -53,14 +85,14 @@ export function startSession(
   };
 
   const next: StoreData = {
-    ...store,
-    efforts: store.efforts.map((e) => (e.id === effort.id ? updatedEffort : e)),
-    sessions: [...store.sessions, session],
+    ...working,
+    efforts: working.efforts.map((e) => (e.id === effort.id ? updatedEffort : e)),
+    sessions: [...working.sessions, session],
     activeSessionId: session.id,
     activeEffortId: effort.id,
   };
 
-  return { store: next, session, effort: updatedEffort };
+  return { store: next, session, effort: updatedEffort, forcedEnd };
 }
 
 export function endSession(
@@ -98,10 +130,16 @@ export function endSession(
   return { store: next, session: closed, effort: updatedEffort, durationMs: duration };
 }
 
+export interface TimelineOptions {
+  limit?: number;
+  effortName?: string;
+  now?: Date;
+}
+
 export function timeline(
   store: StoreData,
-  limit = 20,
-  now: Date = new Date(),
+  limitOrOpts: number | TimelineOptions = 20,
+  nowArg: Date = new Date(),
 ): Array<{
   kind: "session";
   id: string;
@@ -110,10 +148,24 @@ export function timeline(
   endedAt: string | null;
   durationMs: number | null;
 }> {
+  const opts: TimelineOptions =
+    typeof limitOrOpts === "number"
+      ? { limit: limitOrOpts, now: nowArg }
+      : limitOrOpts;
+  const limit = opts.limit ?? 20;
+  const now = opts.now ?? nowArg;
+  const filterEffort = opts.effortName
+    ? findEffort(store, opts.effortName)
+    : undefined;
+  if (opts.effortName && !filterEffort) {
+    throw new Error(`Effort not found: ${opts.effortName}`);
+  }
+
   const effortName = (id: string) =>
     store.efforts.find((e) => e.id === id)?.name ?? "unknown";
 
   return [...store.sessions]
+    .filter((s) => (filterEffort ? s.effortId === filterEffort.id : true))
     .sort((a, b) => Date.parse(b.startedAt) - Date.parse(a.startedAt))
     .slice(0, limit)
     .map((s) => {
@@ -125,6 +177,7 @@ export function timeline(
           durationMs = Math.max(0, end - start);
         }
       } else if (Number.isFinite(start)) {
+        // Open rows always show live age relative to `now`.
         durationMs = Math.max(0, now.getTime() - start);
       }
       return {
