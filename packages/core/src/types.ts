@@ -34,9 +34,12 @@ export interface NowInfo {
 
 export interface BriefingInput {
   now: NowInfo;
+  generatedAt: string;
+  staleAfterMs: number;
   activeEffort: Effort | null;
   activeSession: Session | null;
   sessionAgeMs: number | null;
   effortAgeMs: number | null;
   effortTotalMs: number | null;
+  openSessionWarn: boolean;
 }

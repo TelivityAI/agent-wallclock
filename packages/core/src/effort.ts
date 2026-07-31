@@ -2,16 +2,26 @@ import { ageMs } from "./format.js";
 import { newId } from "./ids.js";
 import type { Effort, StoreData } from "./types.js";
 
-function normalizeName(name: string): string {
-  return name.trim().toLowerCase();
+/**
+ * Normalize an effort name for matching: lowercase, non-alnum → hyphens.
+ * "Auth Rewrite" and "auth-rewrite" resolve to the same effort.
+ */
+export function slugifyEffortName(name: string): string {
+  return name
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
 }
 
 export function findEffort(store: StoreData, nameOrId: string): Effort | undefined {
   const key = nameOrId.trim();
+  if (!key) return undefined;
   const byId = store.efforts.find((e) => e.id === key);
   if (byId) return byId;
-  const norm = normalizeName(key);
-  return store.efforts.find((e) => normalizeName(e.name) === norm);
+  const slug = slugifyEffortName(key);
+  if (!slug) return undefined;
+  return store.efforts.find((e) => slugifyEffortName(e.name) === slug);
 }
 
 export function startEffort(
@@ -19,12 +29,12 @@ export function startEffort(
   name: string,
   now: Date = new Date(),
 ): { store: StoreData; effort: Effort; created: boolean } {
-  const trimmed = name.trim();
-  if (!trimmed) {
+  const slug = slugifyEffortName(name);
+  if (!slug) {
     throw new Error("Effort name is required");
   }
 
-  const existing = findEffort(store, trimmed);
+  const existing = findEffort(store, slug);
   if (existing) {
     const next: StoreData = {
       ...store,
@@ -35,7 +45,7 @@ export function startEffort(
 
   const effort: Effort = {
     id: newId("eff"),
-    name: trimmed,
+    name: slug,
     startedAt: now.toISOString(),
     totalMs: 0,
     sessionCount: 0,
@@ -80,10 +90,22 @@ export function effortStatus(
   }
 
   const age = ageMs(effort.startedAt, now);
+  let totalMs = effort.totalMs;
+  const open =
+    store.activeSessionId != null
+      ? store.sessions.find((s) => s.id === store.activeSessionId)
+      : undefined;
+  if (open && open.effortId === effort.id) {
+    const openAge = ageMs(open.startedAt, now);
+    if (Number.isFinite(openAge)) {
+      totalMs += openAge;
+    }
+  }
+
   return {
     effort,
     ageMs: Number.isFinite(age) ? age : null,
-    totalMs: effort.totalMs,
+    totalMs,
     isActive: store.activeEffortId === effort.id,
   };
 }

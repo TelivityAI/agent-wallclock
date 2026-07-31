@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 import { readFileSync, existsSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   getNow,
   initStore,
   loadStore,
-  saveStore,
+  updateStore,
   getDefaultStoreDir,
   startEffort,
   listEfforts,
@@ -17,11 +17,12 @@ import {
   timeline,
   renderBriefing,
   formatDuration,
+  parseDuration,
 } from "@agent-wallclock/core";
 import { copyToClipboard } from "./copy.js";
-import { parseDurationArg } from "./parse.js";
 
 const STORE_DIR = process.env.AGENT_WALLCLOCK_HOME?.trim() || getDefaultStoreDir();
+const HERE = dirname(fileURLToPath(import.meta.url));
 
 function printHelp(): void {
   console.log(`Agent Wallclock — local temporal context for language models
@@ -32,30 +33,46 @@ Usage:
   wallclock effort start <name>
   wallclock effort list
   wallclock effort status [name]
-  wallclock effort log <name> <duration>   # e.g. 30m, 2h
+  wallclock effort log <name...> <duration>   # duration is the last token (e.g. 30m)
   wallclock session start [effort]
   wallclock session end
   wallclock timeline [limit]
+  wallclock mcp-config --print <claude|cursor>
   wallclock init
 
-Environment:
-  AGENT_WALLCLOCK_HOME   Override store directory (default: ~/.agent-wallclock)
+Install (from repo root after npm install && npm run build):
+  npm link -w @agent-wallclock/cli
+  # or: npm exec -w @agent-wallclock/cli -- wallclock ...
 
-Privacy: store is local JSON only. No network calls.
+Environment:
+  AGENT_WALLCLOCK_HOME     Override store directory (default: ~/.agent-wallclock)
+  AGENT_WALLCLOCK_WRITES=1 Enable MCP write tools (start_effort, log_session)
+
+Privacy: store is local JSON only. No network calls from this CLI.
 `);
 }
 
 function adaptersRoot(): string | null {
-  const here = dirname(fileURLToPath(import.meta.url));
   const candidates = [
-    join(here, "../../../adapters"),
-    join(here, "../../adapters"),
+    join(HERE, "../../../adapters"),
+    join(HERE, "../../adapters"),
     join(process.cwd(), "adapters"),
   ];
   for (const c of candidates) {
     if (existsSync(c)) return c;
   }
   return null;
+}
+
+function mcpServerPath(): string {
+  const candidates = [
+    resolve(HERE, "../../mcp/dist/server.js"),
+    resolve(HERE, "../../../packages/mcp/dist/server.js"),
+  ];
+  for (const c of candidates) {
+    if (existsSync(c)) return c;
+  }
+  return candidates[0]!;
 }
 
 function cmdNow(): void {
@@ -93,13 +110,20 @@ function cmdEffort(args: string[]): void {
   if (sub === "start") {
     const name = args.slice(1).join(" ").trim();
     if (!name) throw new Error("Usage: wallclock effort start <name>");
-    let store = loadStore(STORE_DIR);
-    const result = startEffort(store, name);
-    saveStore(result.store, STORE_DIR);
+    let created = false;
+    let effortName = "";
+    let effortId = "";
+    updateStore(STORE_DIR, (store) => {
+      const result = startEffort(store, name);
+      created = result.created;
+      effortName = result.effort.name;
+      effortId = result.effort.id;
+      return result.store;
+    });
     console.log(
-      result.created
-        ? `Started effort "${result.effort.name}" (${result.effort.id})`
-        : `Using existing effort "${result.effort.name}" (${result.effort.id})`,
+      created
+        ? `Started effort "${effortName}" (${effortId})`
+        : `Using existing effort "${effortName}" (${effortId})`,
     );
     return;
   }
@@ -113,8 +137,9 @@ function cmdEffort(args: string[]): void {
     }
     for (const e of efforts) {
       const active = store.activeEffortId === e.id ? " [active]" : "";
+      const status = effortStatus(store, e.id);
       console.log(
-        `${e.name}${active}  logged=${formatDuration(e.totalMs)}  sessions=${e.sessionCount}  started=${e.startedAt}`,
+        `${e.name}${active}  logged=${formatDuration(status.totalMs)}  sessions=${e.sessionCount}  started=${e.startedAt}`,
       );
     }
     return;
@@ -132,22 +157,30 @@ function cmdEffort(args: string[]): void {
     console.log(`Active:         ${status.isActive ? "yes" : "no"}`);
     console.log(`Started:        ${status.effort.startedAt}`);
     console.log(`Calendar age:   ${formatDuration(status.ageMs)}`);
-    console.log(`Logged work:    ${formatDuration(status.totalMs)}`);
+    console.log(`Logged work:    ${formatDuration(status.totalMs)} (includes open session if any)`);
     console.log(`Sessions:       ${status.effort.sessionCount}`);
     console.log(`Last activity:  ${status.effort.lastActivityAt ?? "unknown"}`);
     return;
   }
 
   if (sub === "log") {
-    const name = args[1];
-    const dur = args[2];
-    if (!name || !dur) throw new Error("Usage: wallclock effort log <name> <duration>");
-    let store = loadStore(STORE_DIR);
-    const ms = parseDurationArg(dur);
-    const result = logManualDuration(store, name, ms);
-    saveStore(result.store, STORE_DIR);
+    if (args.length < 3) {
+      throw new Error("Usage: wallclock effort log <name...> <duration>");
+    }
+    const dur = args[args.length - 1]!;
+    const name = args.slice(1, -1).join(" ").trim();
+    if (!name) throw new Error("Usage: wallclock effort log <name...> <duration>");
+    const ms = parseDuration(dur);
+    let effortName = "";
+    let totalMs = 0;
+    updateStore(STORE_DIR, (store) => {
+      const result = logManualDuration(store, name, ms);
+      effortName = result.effort.name;
+      totalMs = result.effort.totalMs;
+      return result.store;
+    });
     console.log(
-      `Logged ${formatDuration(ms)} on "${result.effort.name}". Total=${formatDuration(result.effort.totalMs)}`,
+      `Logged ${formatDuration(ms)} on "${effortName}". Total=${formatDuration(totalMs)}`,
     );
     return;
   }
@@ -159,18 +192,30 @@ function cmdSession(args: string[]): void {
   const sub = args[0];
   if (sub === "start") {
     const effort = args.slice(1).join(" ").trim() || undefined;
-    let store = loadStore(STORE_DIR);
-    const result = startSession(store, effort);
-    saveStore(result.store, STORE_DIR);
-    console.log(`Session open on "${result.effort.name}" (${result.session.id})`);
+    let effortName = "";
+    let sessionId = "";
+    updateStore(STORE_DIR, (store) => {
+      const result = startSession(store, effort);
+      effortName = result.effort.name;
+      sessionId = result.session.id;
+      return result.store;
+    });
+    console.log(`Session open on "${effortName}" (${sessionId})`);
     return;
   }
   if (sub === "end") {
-    let store = loadStore(STORE_DIR);
-    const result = endSession(store);
-    saveStore(result.store, STORE_DIR);
+    let durationMs = 0;
+    let effortName = "";
+    let totalMs = 0;
+    updateStore(STORE_DIR, (store) => {
+      const result = endSession(store);
+      durationMs = result.durationMs;
+      effortName = result.effort.name;
+      totalMs = result.effort.totalMs;
+      return result.store;
+    });
     console.log(
-      `Session closed. Duration=${formatDuration(result.durationMs)}. Effort "${result.effort.name}" total=${formatDuration(result.effort.totalMs)}`,
+      `Session closed. Duration=${formatDuration(durationMs)}. Effort "${effortName}" total=${formatDuration(totalMs)}`,
     );
     return;
   }
@@ -189,11 +234,43 @@ function cmdTimeline(args: string[]): void {
     return;
   }
   for (const row of rows) {
-    const dur = row.durationMs != null ? formatDuration(row.durationMs) : "open/unknown";
+    const dur = row.durationMs != null ? formatDuration(row.durationMs) : "unknown";
     console.log(
       `${row.startedAt}  ${row.effortName}  ${dur}  ${row.endedAt ? "closed" : "open"}`,
     );
   }
+}
+
+function cmdMcpConfig(args: string[]): void {
+  const print = args.includes("--print");
+  const host = args.find((a) => a === "claude" || a === "cursor");
+  if (!print || !host) {
+    throw new Error("Usage: wallclock mcp-config --print <claude|cursor>");
+  }
+  const server = mcpServerPath();
+  if (!existsSync(server)) {
+    throw new Error(
+      `MCP server build not found at ${server}. Run \`npm run build\` from the repo root first.`,
+    );
+  }
+
+  const config = {
+    mcpServers: {
+      "agent-wallclock": {
+        command: "node",
+        args: [server],
+        env: {
+          AGENT_WALLCLOCK_WRITES: "0",
+        },
+      },
+    },
+  };
+
+  console.log(JSON.stringify(config, null, 2));
+  console.error("");
+  console.error(`# Host: ${host}`);
+  console.error(`# Server: ${server}`);
+  console.error("# Writes default off. Set AGENT_WALLCLOCK_WRITES=1 in env to enable mutations.");
 }
 
 function cmdInit(): void {
@@ -205,6 +282,7 @@ function cmdInit(): void {
   console.log("  1. wallclock effort start <name>");
   console.log("  2. wallclock session start");
   console.log("  3. wallclock brief");
+  console.log("  4. wallclock mcp-config --print cursor   # filled MCP JSON");
   console.log("");
   const root = adaptersRoot();
   if (root) {
@@ -255,6 +333,9 @@ function main(argv: string[]): void {
       break;
     case "timeline":
       cmdTimeline(rest);
+      break;
+    case "mcp-config":
+      cmdMcpConfig(rest);
       break;
     case "init":
       cmdInit();
