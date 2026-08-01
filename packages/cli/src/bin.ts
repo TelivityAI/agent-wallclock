@@ -29,6 +29,9 @@ import {
   restoreStore,
   runDoctor,
   loadConfig,
+  loadPrefs,
+  savePrefs,
+  classifyCircadian,
   classifyError,
   CliError,
   ExitCode,
@@ -66,6 +69,7 @@ function printHelp(): void {
 Usage:
   wallclock now
   wallclock brief [--copy] [--json] [--compact]
+  wallclock circadian on|off|status
   wallclock effort start <name>
   wallclock effort list [--json] [--all]
   wallclock effort status [name]
@@ -93,6 +97,8 @@ Examples:
   wallclock session start
   wallclock brief --copy
   wallclock brief --json | jq .generatedAt
+  wallclock circadian on
+  wallclock circadian status
   wallclock timeline 10 --effort auth-rewrite
   wallclock mcp-config --print cursor --check
   wallclock doctor
@@ -173,20 +179,25 @@ function cmdNow(): void {
   console.log(`ISO (UTC):   ${now.iso}`);
 }
 
+function briefingOpts() {
+  return { storeDir: STORE_DIR };
+}
+
 function cmdBrief(args: string[]): void {
   const copy = takeFlag(args, "--copy");
   const asJson = takeFlag(args, "--json");
   const compact = takeFlag(args, "--compact");
   const store = loadStore(STORE_DIR);
+  const opts = briefingOpts();
 
   let text: string;
   if (asJson) {
-    const input = buildBriefingInput(store);
+    const input = buildBriefingInput(store, opts);
     text = `${JSON.stringify({ ...input, modelRules: MODEL_RULES }, null, 2)}\n`;
   } else if (compact) {
-    text = `${renderBriefingCompact(store)}\n`;
+    text = `${renderBriefingCompact(store, opts)}\n`;
   } else {
-    text = renderBriefing(store);
+    text = renderBriefing(store, opts);
   }
 
   if (copy) {
@@ -638,16 +649,43 @@ function cmdInit(): void {
   }
 }
 
+function cmdCircadian(args: string[]): void {
+  const action = args[0];
+  if (action === "on") {
+    savePrefs({ circadianEnabled: true }, STORE_DIR);
+    console.log("circadian: on");
+    return;
+  }
+  if (action === "off") {
+    savePrefs({ circadianEnabled: false }, STORE_DIR);
+    console.log("circadian: off");
+    return;
+  }
+  if (action === "status") {
+    const enabled = loadPrefs(STORE_DIR).circadianEnabled;
+    console.log(`circadian: ${enabled ? "on" : "off"}`);
+    if (enabled) {
+      const ctx = classifyCircadian();
+      console.log(`band: ${ctx.band}`);
+      console.log(`day: ${ctx.dayKind}`);
+      console.log(`local hour: ${String(ctx.localHour).padStart(2, "0")}`);
+    }
+    return;
+  }
+  throw new CliError("Usage: wallclock circadian on|off|status", ExitCode.USAGE);
+}
+
 function cmdCompletion(args: string[]): void {
   const shell = args[0];
   if (shell === "bash") {
     console.log(`# wallclock bash completion
 _wallclock() {
   local cur="\${COMP_WORDS[COMP_CWORD]}"
-  local cmds="now brief effort session timeline store doctor where mcp-config init completion help"
+  local cmds="now brief circadian effort session timeline store doctor where mcp-config init completion help"
   local effort_subs="start list status log rename archive unarchive delete"
   local session_subs="start end status"
   local store_subs="backup restore"
+  local circadian_subs="on off status"
   if [[ \${COMP_CWORD} -eq 1 ]]; then
     COMPREPLY=( $(compgen -W "\$cmds" -- "\$cur") )
   elif [[ \${COMP_WORDS[1]} == effort && \${COMP_CWORD} -eq 2 ]]; then
@@ -656,6 +694,8 @@ _wallclock() {
     COMPREPLY=( $(compgen -W "\$session_subs" -- "\$cur") )
   elif [[ \${COMP_WORDS[1]} == store && \${COMP_CWORD} -eq 2 ]]; then
     COMPREPLY=( $(compgen -W "\$store_subs" -- "\$cur") )
+  elif [[ \${COMP_WORDS[1]} == circadian && \${COMP_CWORD} -eq 2 ]]; then
+    COMPREPLY=( $(compgen -W "\$circadian_subs" -- "\$cur") )
   elif [[ \${COMP_WORDS[1]} == mcp-config ]]; then
     COMPREPLY=( $(compgen -W "--print --check claude cursor vscode" -- "\$cur") )
   elif [[ \${COMP_WORDS[1]} == completion ]]; then
@@ -670,12 +710,13 @@ complete -F _wallclock wallclock
     console.log(`#compdef wallclock
 _wallclock() {
   local -a cmds
-  cmds=(now brief effort session timeline store doctor where mcp-config init completion help)
+  cmds=(now brief circadian effort session timeline store doctor where mcp-config init completion help)
   _arguments '1:command:(\${cmds})' '*::arg:->args'
   case \$words[1] in
     effort) _values 'effort' start list status log rename archive unarchive delete ;;
     session) _values 'session' start end status ;;
     store) _values 'store' backup restore ;;
+    circadian) _values 'circadian' on off status ;;
     mcp-config) _values 'mcp' --print --check claude cursor vscode ;;
     completion) _values 'shell' bash zsh ;;
   esac
@@ -714,6 +755,9 @@ function main(argv: string[]): void {
       break;
     case "brief":
       cmdBrief(rest);
+      break;
+    case "circadian":
+      cmdCircadian(rest);
       break;
     case "effort":
       cmdEffort(rest);

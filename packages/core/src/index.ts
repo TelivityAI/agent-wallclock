@@ -4,6 +4,8 @@ export * from "./format.js";
 export * from "./duration.js";
 export * from "./config.js";
 export * from "./store.js";
+export * from "./prefs.js";
+export * from "./circadian.js";
 export * from "./effort.js";
 export * from "./session.js";
 export * from "./brief.js";

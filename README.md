@@ -64,6 +64,7 @@ wallclock effort start auth-rewrite
 wallclock session start
 wallclock brief          # print
 wallclock brief --copy   # copy to clipboard when available
+wallclock circadian on   # opt-in: add Circadian band/tone to brief (default off)
 ```
 
 Example output (real CLI shape; durations use `d`/`h`/`m`/`s`):
@@ -168,6 +169,7 @@ When the skill/rule is on, Cursor should call `get_briefing` (or run the CLI) in
 |---------|---------|
 | `wallclock now` | Local date, time, timezone, weekday, ISO |
 | `wallclock brief` | Full Temporal Briefing (`--copy`, `--json`, `--compact`) |
+| `wallclock circadian on\|off\|status` | Opt-in Circadian block in briefing (default off; prefs in `config.json`) |
 | `wallclock doctor [--repair]` | Health checks (store, builds, permissions) |
 | `wallclock where` | Show store path and config hints |
 | `wallclock --version` | Package version |
@@ -204,7 +206,7 @@ Full help: `wallclock --help`. Troubleshooting: [`TROUBLESHOOTING.md`](TROUBLESH
 
 ## Privacy
 
-- State lives only under `~/.agent-wallclock/` (JSON; directory `0700`, file `0600` when the OS allows).
+- State lives only under `~/.agent-wallclock/` (`store.json` ledger + optional `config.json` prefs; directory `0700`, file `0600` when the OS allows).
 - CLI and MCP make **no network calls**.
 - **Clipboard:** `wallclock brief --copy` puts briefing text on your local clipboard; you choose when to paste.
 - **Paste trust:** pasting a briefing into ChatGPT, Claude, or similar **uploads** that time data to the host cloud.

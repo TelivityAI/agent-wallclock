@@ -1,7 +1,10 @@
+import { classifyCircadian } from "./circadian.js";
 import { getNow } from "./clock.js";
 import { loadConfig } from "./config.js";
 import { ageMs, formatDuration } from "./format.js";
+import { loadPrefs } from "./prefs.js";
 import { getActiveSession } from "./session.js";
+import { getDefaultStoreDir } from "./store.js";
 import type { BriefingInput, BriefingOptions, StoreData } from "./types.js";
 
 /** @deprecated Prefer loadConfig().staleAfterMs */
@@ -18,8 +21,15 @@ export const MODEL_RULES = [
   "Never invent time of day, how long the user has been working, or effort history.",
   "If a field is missing or unknown, say unknown or ask — do not guess.",
   "Do not give sleep, circadian, or \"you have done enough\" advice based on invented duration.",
+  "If a Circadian block is present, tone may follow its band/day/tone hint; still never invent time or fatigue, and never moralize about sleep from the clock alone.",
   "If Generated-at is older than the stated freshness window, ask for a refreshed briefing before time-based claims.",
 ].join(" ");
+
+function resolveCircadianEnabled(opts: BriefingOptions): boolean {
+  if (opts.circadianEnabled != null) return opts.circadianEnabled;
+  const storeDir = opts.storeDir ?? getDefaultStoreDir();
+  return loadPrefs(storeDir).circadianEnabled;
+}
 
 export function buildBriefingInput(
   store: StoreData,
@@ -58,6 +68,9 @@ export function buildBriefingInput(
     }
   }
 
+  const circadianEnabled = resolveCircadianEnabled(opts);
+  const circadian = circadianEnabled ? classifyCircadian(nowDate) : null;
+
   return {
     now,
     generatedAt: now.iso,
@@ -71,6 +84,7 @@ export function buildBriefingInput(
       sessionAgeMs != null && sessionAgeMs >= openSessionWarnAfterMs,
     openSessionCapNote:
       sessionAgeMs != null && sessionAgeMs >= openSessionSoftCapMs,
+    circadian,
   };
 }
 
@@ -99,8 +113,18 @@ export function renderBriefing(
     `- Timezone: ${input.now.timezone}`,
     `- ISO (UTC): ${input.now.iso}`,
     "",
-    "## Active session",
   ];
+
+  if (input.circadian) {
+    const hour = String(input.circadian.localHour).padStart(2, "0");
+    lines.push("## Circadian");
+    lines.push(`- Band: ${input.circadian.band} (local hour ${hour})`);
+    lines.push(`- Day: ${input.circadian.dayKind}`);
+    lines.push(`- Tone: ${input.circadian.toneHint}`);
+    lines.push("");
+  }
+
+  lines.push("## Active session");
 
   if (input.activeSession && input.sessionAgeMs != null) {
     lines.push(`- Status: open`);
@@ -166,10 +190,14 @@ export function renderBriefingCompact(
   const effort = input.activeEffort
     ? `${input.activeEffort.name} logged=${formatDuration(input.effortTotalMs)}`
     : "none";
-  return [
+  const lines = [
     `now ${input.now.localDate} ${input.now.localTime} ${input.now.weekday} (${input.now.timezone})`,
     `iso(UTC) ${input.now.iso}  stale-after ${formatDuration(input.staleAfterMs)}`,
     `session ${session}`,
     `effort ${effort}`,
-  ].join("\n");
+  ];
+  if (input.circadian) {
+    lines.push(`circadian ${input.circadian.band} ${input.circadian.dayKind}`);
+  }
+  return lines.join("\n");
 }
