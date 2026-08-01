@@ -22,6 +22,7 @@ Agent Wallclock is a **local-only** temporal context layer for language models. 
                             │
 ┌───────────────────────────▼─────────────────────────────────┐
 │  ~/.agent-wallclock/store.json  (+ store.lock)               │
+│  ~/.agent-wallclock/config.json (prefs; e.g. circadian)      │
 │  system clock (Date / Intl)                                  │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -36,9 +37,10 @@ Agent Wallclock is a **local-only** temporal context layer for language models. 
 
 - **Location:** `~/.agent-wallclock/` by default; override with `AGENT_WALLCLOCK_HOME`.
 - **File:** `store.json` — efforts, sessions, active pointers, schema version.
+- **Prefs:** `config.json` — local toggles (e.g. `circadianEnabled`); separate from the ledger so effort backups do not flip prefs.
 - **Lock:** `store.lock` — exclusive lock for atomic read-modify-write (CLI + MCP).
 - **Permissions:** directory `0700`, file `0600` (best effort on Unix).
-- **Backup/restore:** `wallclock store backup|restore` for user-managed snapshots.
+- **Backup/restore:** `wallclock store backup|restore` for user-managed snapshots of `store.json`.
 
 Store operations are synchronous and local. Corruption triggers `StoreCorruptError`; `wallclock doctor --repair` attempts normalization.
 
@@ -50,8 +52,9 @@ The **Temporal Briefing** is markdown (or JSON with `--json`) built from:
 2. Open session age (if any)
 3. Active effort logged time and calendar age
 4. **Freshness** metadata: `Generated at`, `Stale after` (default 15 minutes via `AGENT_WALLCLOCK_STALE_AFTER_MS`)
+5. Optional **Circadian** block (band / weekday-weekend / tone hint) — only when `wallclock circadian on` has set `circadianEnabled` in `config.json` (default off)
 
-`MODEL_RULES` in the briefing instruct models to trust the briefing only while fresh and never invent durations.
+`MODEL_RULES` in the briefing instruct models to trust the briefing only while fresh, never invent durations, and use Circadian tone only when that section is present.
 
 Adapters in `adapters/` propagate the same rules into host-specific instructions.
 

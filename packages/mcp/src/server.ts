@@ -80,7 +80,7 @@ server.tool(
   async () => {
     try {
       const store = loadStore(STORE_DIR);
-      return textResult(renderBriefing(store));
+      return textResult(renderBriefing(store, { storeDir: STORE_DIR }));
     } catch (err) {
       return errorResult(err);
     }

@@ -10,11 +10,12 @@ Core library for Agent Wallclock: system clock, local JSON store, efforts, sessi
 - `loadStore`, `updateStore`, `initStore`, `backupStore`, `restoreStore`
 - Effort and session operations (`startEffort`, `startSession`, `endSession`, …)
 - `renderBriefing`, `renderBriefingCompact`, `buildBriefingInput`, `MODEL_RULES`
+- `classifyCircadian`, `loadPrefs`, `savePrefs` (opt-in circadian; `config.json`)
 - `runDoctor`, `loadConfig`, typed errors (`CliError`, `StoreCorruptError`, …)
 
 ## Store
 
-Default directory: `~/.agent-wallclock/` (`store.json`, `store.lock`). Override with `AGENT_WALLCLOCK_HOME`.
+Default directory: `~/.agent-wallclock/` (`store.json`, `store.lock`, optional `config.json` prefs). Override with `AGENT_WALLCLOCK_HOME`.
 
 ## Config (environment)
 

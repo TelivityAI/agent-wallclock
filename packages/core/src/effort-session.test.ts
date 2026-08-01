@@ -133,12 +133,17 @@ describe("effort and session", () => {
 
   it("briefing marks missing session as unknown and includes freshness", () => {
     const store = emptyStore();
-    const input = buildBriefingInput(store, new Date("2026-03-01T09:30:00.000Z"));
+    const opts = {
+      nowDate: new Date("2026-03-01T09:30:00.000Z"),
+      circadianEnabled: false,
+    };
+    const input = buildBriefingInput(store, opts);
     assert.equal(input.activeSession, null);
     assert.equal(input.sessionAgeMs, null);
+    assert.equal(input.circadian, null);
     assert.ok(input.generatedAt);
 
-    const text = renderBriefing(store, new Date("2026-03-01T09:30:00.000Z"));
+    const text = renderBriefing(store, opts);
     assert.match(text, /Local time: /);
     assert.match(text, /Age: unknown/);
     assert.match(text, /Never invent time of day/);
@@ -146,9 +151,10 @@ describe("effort and session", () => {
     assert.match(text, /Generated at:/);
     assert.match(text, /Stale after:/);
     assert.match(text, /ISO \(UTC\)/);
+    assert.doesNotMatch(text, /## Circadian/);
     assert.ok(MODEL_RULES.includes("Trust only this Temporal Briefing"));
 
-    const compact = renderBriefingCompact(store, new Date("2026-03-01T09:30:00.000Z"));
+    const compact = renderBriefingCompact(store, opts);
     assert.match(compact, /iso\(UTC\)/);
     assert.match(compact, /session none/);
   });
@@ -163,6 +169,7 @@ describe("effort and session", () => {
       nowDate: t1,
       openSessionSoftCapMs: 8 * 60 * 60 * 1000,
       openSessionWarnAfterMs: 4 * 60 * 60 * 1000,
+      circadianEnabled: false,
     });
     assert.match(text, /Warning:/);
     assert.match(text, /Soft cap:/);

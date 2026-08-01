@@ -4,6 +4,14 @@ All notable changes to Agent Wallclock are documented here.
 
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning starts at **0.1.0** for the first public QA-ready release.
 
+## [Unreleased]
+
+### Added
+
+- **CLI:** `wallclock circadian on|off|status` — opt-in Circadian context in Temporal Briefing (default off)
+- **Core:** `config.json` prefs (`circadianEnabled`) separate from `store.json`; `classifyCircadian` fixed local-hour bands
+- **Briefing:** optional `## Circadian` block (band / day / non-moralizing tone hint) when enabled; compact line `circadian <band> <dayKind>`
+
 ## [0.1.0] — 2026-07-31
 
 First post-QA hardening release batch (`fix/pass-hardening-100`).

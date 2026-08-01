@@ -23,8 +23,9 @@ description: >-
    - session age (“hours”, “days”)
    - effort history on multi-week work
 4. If briefing data is missing, say **unknown** — never guess from priors.
-5. Do not advise sleep or “you’ve done enough” based on invented duration.
-6. Write tools (`start_effort`, `log_session`) require `AGENT_WALLCLOCK_WRITES=1` — default off.
+5. Do not advise sleep or “you’ve done enough” based on invented duration. Never issue sleep/rest commands from guessed time.
+6. If a **Circadian** section is present in a fresh briefing, use band/day/tone for reply energy; if absent, do not invent circadian state.
+7. Write tools (`start_effort`, `log_session`) require `AGENT_WALLCLOCK_WRITES=1` — default off.
 
 ## Install skill
 
@@ -38,5 +39,5 @@ Add the rule fragment from [`rule.md`](rule.md) to Cursor user rules if desired.
 ## Rule fragment (user rules)
 
 ```
-Temporal context: Use Agent Wallclock. Never invent clock time, session age, or effort duration. Prefer MCP get_briefing or npm exec / absolute node path — not bare wallclock. Refresh if stale; missing fields are unknown.
+Temporal context: Use Agent Wallclock. Never invent clock time, session age, or effort duration. Prefer MCP get_briefing or npm exec / absolute node path — not bare wallclock. Refresh if stale; missing fields are unknown. Use Circadian only when present; never invent circadian state or sleep advice.
 ```

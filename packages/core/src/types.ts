@@ -41,6 +41,18 @@ export interface NowInfo {
   epochMs: number;
 }
 
+/** Local-hour circadian band (fixed boundaries; opt-in via prefs). */
+export type CircadianBand = "night" | "morning" | "afternoon" | "evening";
+
+export type DayKind = "weekday" | "weekend";
+
+export interface CircadianContext {
+  band: CircadianBand;
+  dayKind: DayKind;
+  localHour: number;
+  toneHint: string;
+}
+
 export interface BriefingInput {
   now: NowInfo;
   generatedAt: string;
@@ -52,6 +64,8 @@ export interface BriefingInput {
   effortTotalMs: number | null;
   openSessionWarn: boolean;
   openSessionCapNote: boolean;
+  /** Present only when circadian prefs are enabled; otherwise null. */
+  circadian: CircadianContext | null;
 }
 
 export interface BriefingOptions {
@@ -59,4 +73,8 @@ export interface BriefingOptions {
   openSessionWarnAfterMs?: number;
   openSessionSoftCapMs?: number;
   nowDate?: Date;
+  /** Override store directory for prefs load (same as AGENT_WALLCLOCK_HOME). */
+  storeDir?: string;
+  /** Override circadian toggle (tests); when omitted, load from config.json. */
+  circadianEnabled?: boolean;
 }
