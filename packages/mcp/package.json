@@ -19,7 +19,7 @@
   "dependencies": {
     "@agent-wallclock/core": "*",
     "@modelcontextprotocol/sdk": "^1.12.1",
-    "zod": "^4.4.3"
+    "zod": "^4.5.4"
   },
   "engines": {
     "node": ">=20"
